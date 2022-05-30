@@ -1,0 +1,102 @@
+service: rewards
+frameworkVersion: '3'
+
+params:
+  dev:
+    org: noah
+  prod:
+    org: noah
+
+provider:
+  name: aws
+  runtime: nodejs14.x
+  # stackName: ${org}-${sls:stage}-rewards
+  apiGateway:
+    # apiName: ${org}-${sls:stage}-rewards-api-gateway
+    minimumCompressionSize: 1024
+    shouldStartNameWithService: true
+  environment:
+    AWS_NODEJS_CONNECTION_REUSE_ENABLED: '1'
+    NODE_OPTIONS: '--enable-source-maps --stack-trace-limit=1000'
+
+functions:
+  authorizer:
+    description: Authorization function running before HTTP calls reach to rewards endpoints
+    handler: ./src/functions/index.authorizerHandler
+  getCustomerReward:
+    description: Used to receive a reward of a particular user
+    handler: ./src/functions/index.getCustomerRewardHandler
+    events:
+      - http:
+          method: GET
+          path: /api/v1/customers/{customerID}/rewards/{rewardID}
+          authorizer:
+            name: authorizer
+
+  getCustomerRewards:
+    description: Used to receive the points of a particular user
+    handler: ./src/functions/index.getCustomerRewardsHandler
+    events:
+      - http:
+          method: GET
+          path: /api/v1/customers/{customerID}/rewards
+          authorizer:
+            name: authorizer
+
+  getCustomersPoints:
+    description: Used to receive the points of all users on different interval
+    handler: ./src/functions/index.getCustomersPointsHandler
+    events:
+      - http:
+          method: GET
+          path: /api/v1/customers/points
+          authorizer:
+            name: authorizer
+
+  postCustomerReward:
+    description: Used to reward points of a particular user
+    handler: ./src/functions/index.postCustomerRewardsHandler
+    events:
+      - http:
+          method: POST
+          path: /api/v1/customers/{customerID}/rewards
+          authorizer:
+            name: authorizer
+
+  postDepositReward:
+    description: Subscriber used to reward users based on their deposits
+    handler: ./src/functions/index.postDepositRewardHandler
+    events:
+      - sns: depositsTopic
+
+  postReferralReward:
+    description: Subscriber used to reward users when they refer someone
+    handler: ./src/functions/index.postReferralRewardHandler
+    events:
+      - sns: referralTopic
+
+  postTopUsersWeeklyReward:
+    description: Cronjob used to reward top users on a weekly basis
+    handler: ./src/functions/index.postTopUsersWeeklyRewardHandler
+    events:
+      - schedule: cron(0 3 * * Mon *) # every Monday at 3:00am
+
+package:
+  individually: true
+plugins:
+  - serverless-esbuild
+  - serverless-offline-sns
+  - serverless-offline
+custom:
+  serverless-offline-sns:
+    port: 4002
+    debug: false
+  esbuild:
+    bundle: true
+    minify: false
+    sourcemap: true
+    exclude:
+      - aws-sdk
+    target: node14
+    platform: node
+    concurrency: 10
